@@ -6,7 +6,7 @@
   display: flex;
   justify-content: center;
   align-items: center;
-  background: linear-gradient(135deg,  #f7971e, #ffd200);
+  background: linear-gradient(135deg, aquamarine, rgb(0, 115, 255));
   font-family: 'Segoe UI', sans-serif;
   overflow: hidden;
 }
@@ -49,7 +49,7 @@
   padding: 14px;
   margin-top: 15px;
   font-size: 1rem;
-  background-color: #f7971e;
+  background-color: aqua;
   border: none;
   border-radius: 12px;
   cursor: pointer;
@@ -59,14 +59,14 @@
 }
 
 .button:hover {
-  background-color: #ffd200;
+  background-color: aquamarine;
   transform: scale(1.05);
-  box-shadow: 0 8px 20px rgba(255, 210, 0, 0.5);
+  box-shadow: 0 8px 20px aquamarine;
 }
 
 /* Message for error/success */
 .message {
-  color: green;
+  color: blue;
   margin-top: 12px;
   font-size: 0.95rem;
   min-height: 1.2em;
