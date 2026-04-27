@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { useRouter } from 'next/router'
-import styles from '../styles/Login.module.css'
+import styles from '../styles/login.module.css'
 
 export default function Auth() {
   const [isLogin, setIsLogin] = useState(false) // default = signup
