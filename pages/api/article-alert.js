@@ -1,127 +1,167 @@
-// pages/api/send-article-email.js
+import { useState } from 'react';
+import { useRouter } from 'next/router';
+import { supabase } from '../lib/supabase';
 
-import nodemailer from 'nodemailer';
-import { createClient } from '@supabase/supabase-js';
+export default function CreateArticle() {
+  const router = useRouter();
 
-// Supabase connection
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-);
+  const [title, setTitle] = useState('');
+  const [content, setContent] = useState('');
+  const [loading, setLoading] = useState(false);
 
-// Gmail transporter
-const transporter = nodemailer.createTransport({
-  service: 'gmail',
-  auth: {
-    user: process.env.EMAIL_USER,
-    pass: process.env.EMAIL_PASS,
-  },
-});
+  const handlePublish = async (e) => {
+    e.preventDefault();
 
-export default async function handler(req, res) {
-  // Allow POST requests only
-  if (req.method !== 'POST') {
-    return res.status(405).json({
-      success: false,
-      error: 'Method not allowed',
-    });
-  }
+    setLoading(true);
 
-  try {
-    // Get request body data
-    const { title, content, email, authorName } = req.body;
+    try {
+      // Get logged in user
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
 
-    // Validate required fields
-    if (!title || !email) {
-      return res.status(400).json({
-        success: false,
-        error: 'Missing title or email',
-      });
+      // Check if user exists
+      if (!user) {
+        alert('You must login first.');
+        setLoading(false);
+        return;
+      }
+
+      // Insert article into Supabase
+      const { error } = await supabase.from('articles').insert([
+        {
+          title,
+          content,
+          user_id: user.id,
+          email: user.email,
+        },
+      ]);
+
+      // Handle insert error
+      if (error) {
+        console.error(error);
+        alert('Failed to publish article.');
+        setLoading(false);
+        return;
+      }
+
+      // Send email notification to admin
+      try {
+        await fetch('/api/send-article-email', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            title,
+            content,
+            email: user.email,
+            authorName:
+              user.user_metadata?.full_name ||
+              user.email ||
+              'Unknown User',
+          }),
+        });
+      } catch (emailError) {
+        console.error('Email notification failed:', emailError);
+      }
+
+      alert('Article published successfully!');
+
+      // Redirect to dashboard
+      router.push('/dashboard');
+    } catch (error) {
+      console.error(error);
+      alert('Something went wrong.');
     }
 
-    // Fetch active admin email from Supabase
-    const { data: admins, error: adminError } = await supabase
-      .from('admin_emails')
-      .select('email')
-      .eq('is_active', true);
+    setLoading(false);
+  };
 
-    // Handle database errors
-    if (adminError) {
-      console.error('Supabase error:', adminError);
+  return (
+    <div
+      style={{
+        minHeight: '100vh',
+        background: '#0f172a',
+        display: 'flex',
+        justifyContent: 'center',
+        alignItems: 'center',
+        padding: '20px',
+      }}
+    >
+      <form
+        onSubmit={handlePublish}
+        style={{
+          width: '100%',
+          maxWidth: '700px',
+          background: '#1e293b',
+          padding: '30px',
+          borderRadius: '15px',
+          color: 'white',
+        }}
+      >
+        <h1
+          style={{
+            textAlign: 'center',
+            marginBottom: '25px',
+          }}
+        >
+          Publish Article
+        </h1>
 
-      return res.status(500).json({
-        success: false,
-        error: 'Failed to fetch admin email',
-      });
-    }
+        <input
+          type="text"
+          placeholder="Article Title"
+          value={title}
+          onChange={(e) => setTitle(e.target.value)}
+          required
+          style={{
+            width: '100%',
+            padding: '14px',
+            marginBottom: '20px',
+            borderRadius: '10px',
+            border: 'none',
+            outline: 'none',
+            fontSize: '16px',
+          }}
+        />
 
-    // Check if admin email exists
-    if (!admins || admins.length === 0) {
-      return res.status(500).json({
-        success: false,
-        error: 'No active admin email found',
-      });
-    }
+        <textarea
+          placeholder="Write your article content here..."
+          value={content}
+          onChange={(e) => setContent(e.target.value)}
+          required
+          rows={10}
+          style={{
+            width: '100%',
+            padding: '14px',
+            marginBottom: '20px',
+            borderRadius: '10px',
+            border: 'none',
+            outline: 'none',
+            resize: 'none',
+            fontSize: '16px',
+          }}
+        />
 
-    // Use first active admin email
-    const adminEmail = admins[0].email;
-
-    console.log('Sending email to:', adminEmail);
-
-    // Send email
-    const info = await transporter.sendMail({
-      from: `"ML Hub Article Alert" <${process.env.EMAIL_USER}>`,
-      to: adminEmail,
-      subject: `New Article Posted: ${title}`,
-
-      html: `
-        <div style="font-family: Arial, sans-serif; padding: 20px;">
-          
-          <h2 style="color: #2563eb;">
-            📢 New Article Posted
-          </h2>
-
-          <p>
-            <strong>Author:</strong>
-            ${authorName || 'Unknown User'}
-          </p>
-
-          <p>
-            <strong>Email:</strong>
-            ${email}
-          </p>
-
-          <p>
-            <strong>Posted Time:</strong>
-            ${new Date().toLocaleString('en-PH', {
-              timeZone: 'Asia/Manila',
-            })}
-          </p>
-
-          <hr />
-
-          <h3>📝 Article Title</h3>
-          <p>${title}</p>
-
-          <h3>📄 Article Content</h3>
-          <p>${content || 'No content provided.'}</p>
-
-        </div>
-      `,
-    });
-
-    console.log('Email sent successfully:', info.response);
-
-    return res.status(200).json({
-      success: true,
-      message: 'Article alert sent successfully',
-    });
-  } catch (error) {
-    console.error('Article email error:', error);
-
-    return res.status(500).json({
-      success: false,
-      error: error.message,
-    });
-  }
+        <button
+          type="submit"
+          disabled={loading}
+          style={{
+            width: '100%',
+            padding: '14px',
+            background: '#2563eb',
+            color: 'white',
+            border: 'none',
+            borderRadius: '10px',
+            cursor: 'pointer',
+            fontSize: '16px',
+            fontWeight: 'bold',
+          }}
+        >
+          {loading ? 'Publishing...' : 'Publish Article'}
+        </button>
+      </form>
+    </div>
+  );
 }
