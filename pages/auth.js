@@ -56,6 +56,12 @@ export default function Auth() {
           className={styles.input}
           onChange={(e) => setPassword(e.target.value)}
         />
+        <input
+          type="password"
+          placeholder="Confirm Password"
+          className={styles.input}
+          onChange={(e) => setPassword(e.target.value)}
+        />
 
         <button
           className={styles.button}
