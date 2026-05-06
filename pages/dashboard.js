@@ -32,6 +32,7 @@ export default function Dashboard() {
     checkUser()
   }, [])
 
+  // 📥 ARTICLES
   const fetchArticles = async () => {
     const { data } = await supabase
       .from('articles')
@@ -41,6 +42,7 @@ export default function Dashboard() {
     setArticles(data || [])
   }
 
+  // 💬 COMMENTS
   const fetchComments = async () => {
     const { data } = await supabase
       .from('comments')
@@ -50,11 +52,9 @@ export default function Dashboard() {
     setComments(data || [])
   }
 
+  // 📝 PUBLISH
   const handlePublish = async () => {
-    if (!title || !content) {
-      alert('Please fill all fields')
-      return
-    }
+    if (!title || !content) return alert('Fill all fields')
 
     await supabase.from('articles').insert([
       {
@@ -71,155 +71,306 @@ export default function Dashboard() {
     fetchArticles()
   }
 
-  const handleDelete = async (id) => {
-    const article = articles.find(a => a.id === id)
+  // 🔗 SHARE
+  const handleShare = (id) => {
+    const link = `${window.location.origin}/article/${id}`
+    navigator.clipboard.writeText(link)
+    alert('Link copied!')
+  }
 
-    if (!article) return
+  // 👍 LIKE
+  const handleLike = async (article) => {
+    const { data: existing } = await supabase
+      .from('article_reactions')
+      .select('*')
+      .eq('article_id', article.id)
+      .eq('user_id', user.id)
+      .maybeSingle()
 
-    if (article.user_id !== user.id) {
-      alert("You are not allowed to delete this article")
-      return
+    if (existing?.type === 'like') return alert('Already liked')
+
+    if (existing?.type === 'dislike') {
+      await supabase
+        .from('articles')
+        .update({ dislikes: Math.max(0, article.dislikes - 1) })
+        .eq('id', article.id)
+
+      await supabase
+        .from('article_reactions')
+        .delete()
+        .eq('id', existing.id)
     }
 
-    const confirmDelete = confirm('Are you sure?')
-    if (!confirmDelete) return
+    await supabase.from('article_reactions').insert([
+      {
+        article_id: article.id,
+        user_id: user.id,
+        type: 'like',
+      },
+    ])
 
-    await supabase.from('articles').delete().eq('id', id)
+    await supabase
+      .from('articles')
+      .update({ likes: article.likes + 1 })
+      .eq('id', article.id)
 
     fetchArticles()
   }
 
+  // 👎 DISLIKE
+  const handleDislike = async (article) => {
+    const { data: existing } = await supabase
+      .from('article_reactions')
+      .select('*')
+      .eq('article_id', article.id)
+      .eq('user_id', user.id)
+      .maybeSingle()
+
+    if (existing?.type === 'dislike') return alert('Already disliked')
+
+    if (existing?.type === 'like') {
+      await supabase
+        .from('articles')
+        .update({ likes: Math.max(0, article.likes - 1) })
+        .eq('id', article.id)
+
+      await supabase
+        .from('article_reactions')
+        .delete()
+        .eq('id', existing.id)
+    }
+
+    await supabase.from('article_reactions').insert([
+      {
+        article_id: article.id,
+        user_id: user.id,
+        type: 'dislike',
+      },
+    ])
+
+    await supabase
+      .from('articles')
+      .update({ dislikes: article.dislikes + 1 })
+      .eq('id', article.id)
+
+    fetchArticles()
+  }
+
+  // 🗑 DELETE (ONLY OWNER)
+  const handleDelete = async (article) => {
+    if (article.user_id !== user.id) {
+      alert("You can't delete this article")
+      return
+    }
+
+    await supabase
+      .from('articles')
+      .delete()
+      .eq('id', article.id)
+
+    fetchArticles()
+  }
+
+  // 💬 COMMENT
+  const handleComment = async (articleId) => {
+    if (!commentText) return
+
+    await supabase.from('comments').insert([
+      {
+        article_id: articleId,
+        user_id: user.id,
+        content: commentText,
+        parent_id: null,
+      },
+    ])
+
+    setCommentText('')
+    fetchComments()
+  }
+
+  // ↩️ REPLY
+  const handleReply = async (articleId, parentId) => {
+    if (!replyText) return
+
+    await supabase.from('comments').insert([
+      {
+        article_id: articleId,
+        user_id: user.id,
+        content: replyText,
+        parent_id: parentId,
+      },
+    ])
+
+    setReplyText('')
+    setActiveReply(null)
+    fetchComments()
+  }
+
+  // 🚪 LOGOUT
   const handleLogout = async () => {
     await supabase.auth.signOut()
     router.push('/')
   }
 
   return (
-    <div style={{ padding: '40px', fontFamily: 'Segoe UI', background: '#f5f7fb', minHeight: '100vh' }}>
+    <div style={{ padding: 40, fontFamily: 'Segoe UI' }}>
 
-      {/* 🎨 ANIMATION */}
-      <style jsx>{`
-        @keyframes glowPulse {
-          0% {
-            box-shadow: 0 0 4px rgba(34, 197, 94, 0.35),
-                        0 0 10px rgba(34, 197, 94, 0.2);
-            transform: translateY(0px);
-            opacity: 0.95;
-          }
+      {/* HEADER + LOGOUT */}
+      <div
+        style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          marginBottom: 20,
+        }}
+      >
+        <h1>Dashboard 🚀</h1>
 
-          50% {
-            box-shadow: 0 0 14px rgba(34, 197, 94, 0.9),
-                        0 0 28px rgba(34, 197, 94, 0.6);
-            transform: translateY(-2px);
-            opacity: 1;
-          }
-
-          100% {
-            box-shadow: 0 0 4px rgba(34, 197, 94, 0.35),
-                        0 0 10px rgba(34, 197, 94, 0.2);
-            transform: translateY(0px);
-            opacity: 0.95;
-          }
-        }
-
-        .owner-badge {
-          display: inline-flex;
-          align-items: center;
-          gap: 6px;
-          margin-bottom: 10px;
-          padding: 6px 12px;
-          background: linear-gradient(135deg, #22c55e, #16a34a);
-          color: white;
-          font-size: 12px;
-          border-radius: 999px;
-          font-weight: 600;
-          animation: glowPulse 2s ease-in-out infinite;
-          will-change: transform, box-shadow;
-        }
-      `}</style>
-
-      <h1>Dashboard 🚀</h1>
-
-      {/* CREATE ARTICLE */}
-      <div style={{ marginBottom: '30px' }}>
-        <h2>Publish Article</h2>
-
-        <input
-          placeholder="Title"
-          value={title}
-          onChange={(e) => setTitle(e.target.value)}
-          style={{ width: '100%', padding: '10px', marginBottom: '10px' }}
-        />
-
-        <textarea
-          placeholder="Content"
-          value={content}
-          onChange={(e) => setContent(e.target.value)}
-          style={{ width: '100%', height: '120px', padding: '10px' }}
-        />
-
-        <button onClick={handlePublish}>Publish</button>
-      </div>
-
-      {/* ARTICLES */}
-      <h2>Top Articles</h2>
-
-      {articles.map((article) => (
-        <div
-          key={article.id}
-          style={{
-            marginBottom: '20px',
-            padding: '15px',
-            borderRadius: '12px',
-            background: 'white',
-            border: '1px solid #e5e7eb',
-          }}
-        >
-          <h3>{article.title}</h3>
-
-          {/* ⭐ OWNER BADGE */}
-          {article.user_id === user.id && (
-            <span className="owner-badge">
-              ⭐ You own this article
-            </span>
-          )}
-
-          <p>{article.content}</p>
-
-          <p>👍 {article.likes} | 👎 {article.dislikes}</p>
-
-          {/* ACTION BUTTONS */}
-          <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
-            <button>👍 Like</button>
-            <button>👎 Dislike</button>
-
-            <button onClick={() => handleDelete(article.id)}>
-              🗑 Delete
-            </button>
-
-            <button>
-              🔗 Share
-            </button>
-          </div>
-        </div>
-      ))}
-
-      {/* 🚪 LOGOUT BUTTON (RESTORED) */}
-      <div style={{ marginTop: '40px' }}>
         <button
           onClick={handleLogout}
           style={{
-            background: '#ef4444',
+            background: '#ff4d4f',
             color: 'white',
-            padding: '10px 15px',
             border: 'none',
-            borderRadius: '8px',
+            padding: '8px 14px',
+            borderRadius: 6,
             cursor: 'pointer',
           }}
         >
           Logout
         </button>
       </div>
+
+      {/* CREATE ARTICLE */}
+      <div style={{ marginBottom: 20 }}>
+        <input
+          placeholder="Title"
+          value={title}
+          onChange={(e) => setTitle(e.target.value)}
+        />
+
+        <br /><br />
+
+        <textarea
+          placeholder="Content"
+          value={content}
+          onChange={(e) => setContent(e.target.value)}
+        />
+
+        <br /><br />
+
+        <button onClick={handlePublish}>
+          Publish
+        </button>
+      </div>
+
+      <h2>Articles</h2>
+
+      {articles.map((article) => (
+        <div
+          key={article.id}
+          style={{
+            marginTop: 20,
+            padding: 20,
+            background: '#fff',
+            borderRadius: 10,
+          }}
+        >
+          <h3>{article.title}</h3>
+          <p>{article.content}</p>
+
+          <p>
+            👍 {article.likes} | 👎 {article.dislikes}
+          </p>
+
+          {/* BUTTONS */}
+          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+
+            <button onClick={() => handleShare(article.id)}>
+              🔗 Share
+            </button>
+
+            <button onClick={() => handleLike(article)}>
+              👍 Like
+            </button>
+
+            <button onClick={() => handleDislike(article)}>
+              👎 Dislike
+            </button>
+
+            {article.user_id === user.id && (
+              <button onClick={() => handleDelete(article)}>
+                🗑 Delete
+              </button>
+            )}
+          </div>
+
+          {/* COMMENT */}
+          <div style={{ marginTop: 15 }}>
+            <input
+              placeholder="Write comment..."
+              value={commentText}
+              onChange={(e) => setCommentText(e.target.value)}
+            />
+
+            <button onClick={() => handleComment(article.id)}>
+              Comment
+            </button>
+          </div>
+
+          {/* COMMENTS */}
+          <div style={{ marginTop: 15 }}>
+            <h4>Comments</h4>
+
+            {comments
+              .filter(
+                (c) =>
+                  c.article_id === article.id &&
+                  c.parent_id === null
+              )
+              .map((comment) => (
+                <div key={comment.id}>
+                  <p>💬 {comment.content}</p>
+
+                  {comments
+                    .filter((r) => r.parent_id === comment.id)
+                    .map((reply) => (
+                      <p
+                        key={reply.id}
+                        style={{ marginLeft: 20, fontSize: 13 }}
+                      >
+                        ↩️ {reply.content}
+                      </p>
+                    ))}
+
+                  <button onClick={() => setActiveReply(comment.id)}>
+                    Reply
+                  </button>
+
+                  {activeReply === comment.id && (
+                    <div>
+                      <input
+                        placeholder="Write reply..."
+                        value={replyText}
+                        onChange={(e) =>
+                          setReplyText(e.target.value)
+                        }
+                      />
+
+                      <button
+                        onClick={() =>
+                          handleReply(article.id, comment.id)
+                        }
+                      >
+                        Send
+                      </button>
+                    </div>
+                  )}
+                </div>
+              ))}
+          </div>
+        </div>
+      ))}
     </div>
   )
 }
